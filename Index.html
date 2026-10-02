@@ -1,1 +1,965 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Equation Graph — V1</title>
+
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/14.0.1/math.min.js"></script>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #0b1020;
+    color: white;
+}
+
+header {
+    padding: 22px;
+    text-align: center;
+    background: #111936;
+    border-bottom: 1px solid #29345e;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 28px;
+}
+
+header p {
+    color: #aeb8d8;
+    margin: 8px 0 0;
+}
+
+.container {
+    max-width: 1200px;
+    margin: auto;
+    padding: 20px;
+}
+
+.controls {
+    background: #111936;
+    padding: 18px;
+    border-radius: 14px;
+    margin-bottom: 18px;
+}
+
+.row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+input, select, button {
+    border: none;
+    border-radius: 9px;
+    padding: 12px;
+    font-size: 15px;
+}
+
+input {
+    flex: 1;
+    min-width: 250px;
+    background: #20294a;
+    color: white;
+}
+
+select {
+    background: #20294a;
+    color: white;
+}
+
+button {
+    cursor: pointer;
+    background: #4f7cff;
+    color: white;
+    font-weight: bold;
+}
+
+button:hover {
+    opacity: 0.85;
+}
+
+.secondary {
+    background: #283354;
+}
+
+.equation-list {
+    margin-top: 10px;
+}
+
+.eq-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+}
+
+.eq-item span {
+    flex: 1;
+    padding: 10px;
+    background: #1b2442;
+    border-radius: 8px;
+}
+
+.remove {
+    background: #d94c4c;
+}
+
+#graph {
+    width: 100%;
+    height: 650px;
+    background: white;
+    border-radius: 14px;
+}
+
+.status {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 9px;
+    background: #151e3b;
+    color: #b8c2df;
+}
+
+.examples {
+    margin-top: 20px;
+    background: #111936;
+    padding: 18px;
+    border-radius: 14px;
+}
+
+.examples code {
+    display: inline-block;
+    background: #20294a;
+    padding: 8px;
+    margin: 5px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+@media(max-width: 700px) {
+    #graph {
+        height: 500px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>Equation Graph V1</h1>
+    <p>Turn mathematical equations into interactive graphs.</p>
+</header>
+
+<div class="container">
+
+    <div class="controls">
+
+        <div class="row">
+
+            <input
+                id="equation"
+                placeholder="Example: y = x^3 - 4*x^2 + 2*x + 5"
+                value="y = x^2"
+            >
+
+            <select id="graphType">
+                <option value="cartesian">Cartesian 2D</option>
+                <option value="implicit">Implicit 2D</option>
+                <option value="parametric">Parametric</option>
+                <option value="polar">Polar</option>
+                <option value="inequality">Inequality</option>
+            </select>
+
+            <button onclick="addEquation()">Add</button>
+            <button onclick="drawGraphs()">Graph</button>
+
+        </div>
+
+        <div class="row">
+
+            <button class="secondary" onclick="clearEquations()">
+                Clear
+            </button>
+
+            <button class="secondary" onclick="resetView()">
+                Reset View
+            </button>
+
+        </div>
+
+        <div class="equation-list" id="equationList"></div>
+
+    </div>
+
+    <div id="graph"></div>
+
+    <div class="status" id="status">
+        Ready.
+    </div>
+
+    <div class="examples">
+
+        <h3>Try these</h3>
+
+        <code onclick="loadExample('y = x^3 - 4*x^2 + 2*x + 5','cartesian')">
+            Cubic
+        </code>
+
+        <code onclick="loadExample('y = sin(x) + x/2','cartesian')">
+            Sine
+        </code>
+
+        <code onclick="loadExample('x^2 + y^2 = 25','implicit')">
+            Circle
+        </code>
+
+        <code onclick="loadExample('x^2/25 + y^2/9 = 1','implicit')">
+            Ellipse
+        </code>
+
+        <code onclick="loadExample('x = cos(t); y = sin(t)','parametric')">
+            Parametric Circle
+        </code>
+
+        <code onclick="loadExample('r = 2*cos(theta)','polar')">
+            Polar
+        </code>
+
+        <code onclick="loadExample('y > x^2 - 2','inequality')">
+            Inequality
+        </code>
+
+    </div>
+
+</div>
+
+<script>
+
+let equations = [];
+
+const colors = [
+    "#4f7cff",
+    "#ff5c8a",
+    "#35d07f",
+    "#ffb84d",
+    "#a66cff",
+    "#20c7d9"
+];
+
+/* -----------------------------
+   BASIC UTILITIES
+----------------------------- */
+
+function cleanEquation(eq) {
+    return eq
+        .replace(/²/g, "^2")
+        .replace(/³/g, "^3")
+        .replace(/⁴/g, "^4")
+        .replace(/π/g, "pi")
+        .replace(/√/g, "sqrt")
+        .replace(/−/g, "-");
+}
+
+function evaluate(expression, variable, value) {
+
+    try {
+
+        return math.evaluate(
+            expression,
+            {
+                [variable]: value,
+                pi: Math.PI,
+                e: Math.E
+            }
+        );
+
+    } catch {
+        return NaN;
+    }
+}
+
+/* -----------------------------
+   EQUATION MANAGEMENT
+----------------------------- */
+
+function addEquation() {
+
+    const input = document.getElementById("equation");
+    const type = document.getElementById("graphType");
+
+    let eq = input.value.trim();
+
+    if (!eq) return;
+
+    equations.push({
+        equation: cleanEquation(eq),
+        type: type.value
+    });
+
+    updateEquationList();
+
+    drawGraphs();
+}
+
+function updateEquationList() {
+
+    const list = document.getElementById("equationList");
+
+    list.innerHTML = "";
+
+    equations.forEach((item, index) => {
+
+        const div = document.createElement("div");
+
+        div.className = "eq-item";
+
+        div.innerHTML = `
+            <span>
+                ${index + 1}. ${item.equation}
+                <small> (${item.type})</small>
+            </span>
+
+            <button
+                class="remove"
+                onclick="removeEquation(${index})">
+                Remove
+            </button>
+        `;
+
+        list.appendChild(div);
+
+    });
+}
+
+function removeEquation(index) {
+
+    equations.splice(index, 1);
+
+    updateEquationList();
+
+    drawGraphs();
+}
+
+function clearEquations() {
+
+    equations = [];
+
+    updateEquationList();
+
+    Plotly.purge("graph");
+
+    document.getElementById("status").innerText = "All equations cleared.";
+}
+
+/* -----------------------------
+   MAIN GRAPH ENGINE
+----------------------------- */
+
+function drawGraphs() {
+
+    if (equations.length === 0) {
+
+        document.getElementById("status").innerText =
+            "Enter an equation and press Add.";
+
+        return;
+    }
+
+    let traces = [];
+
+    equations.forEach((item, index) => {
+
+        try {
+
+            if (item.type === "cartesian") {
+
+                traces.push(
+                    createCartesian(item.equation, index)
+                );
+
+            }
+
+            if (item.type === "implicit") {
+
+                traces.push(
+                    createImplicit(item.equation, index)
+                );
+
+            }
+
+            if (item.type === "parametric") {
+
+                const result =
+                    createParametric(item.equation, index);
+
+                traces.push(result);
+
+            }
+
+            if (item.type === "polar") {
+
+                traces.push(
+                    createPolar(item.equation, index)
+                );
+
+            }
+
+            if (item.type === "inequality") {
+
+                traces.push(
+                    createInequality(item.equation, index)
+                );
+
+            }
+
+        } catch(error) {
+
+            console.error(error);
+
+        }
+
+    });
+
+    const layout = {
+
+        title: "Interactive Equation Graph",
+
+        paper_bgcolor: "#ffffff",
+
+        plot_bgcolor: "#ffffff",
+
+        xaxis: {
+            title: "x",
+            zeroline: true,
+            gridcolor: "#dddddd"
+        },
+
+        yaxis: {
+            title: "y",
+            zeroline: true,
+            gridcolor: "#dddddd"
+        },
+
+        margin: {
+            l: 60,
+            r: 30,
+            t: 60,
+            b: 60
+        },
+
+        hovermode: "closest",
+
+        dragmode: "pan"
+    };
+
+    Plotly.newPlot(
+        "graph",
+        traces,
+        layout,
+        {
+            responsive: true,
+            scrollZoom: true
+        }
+    );
+
+    document.getElementById("status").innerText =
+        `${equations.length} equation(s) plotted successfully.`;
+}
+
+/* -----------------------------
+   CARTESIAN
+----------------------------- */
+
+function createCartesian(eq, index) {
+
+    let expression = eq
+        .split("=")
+        .slice(1)
+        .join("=")
+        .trim();
+
+    const x = [];
+    const y = [];
+
+    for (let i = -20; i <= 20; i += 0.02) {
+
+        x.push(i);
+
+        let value;
+
+        try {
+
+            value = math.evaluate(
+                expression,
+                {
+                    x: i,
+                    pi: Math.PI,
+                    e: Math.E
+                }
+            );
+
+        } catch {
+
+            value = NaN;
+
+        }
+
+        if (
+            typeof value !== "number" ||
+            !Number.isFinite(value)
+        ) {
+            y.push(null);
+        } else {
+
+            y.push(value);
+        }
+    }
+
+    return {
+
+        x: x,
+
+        y: y,
+
+        mode: "lines",
+
+        type: "scatter",
+
+        name: eq,
+
+        line: {
+            color: colors[index % colors.length],
+            width: 3
+        }
+
+    };
+}
+
+/* -----------------------------
+   IMPLICIT EQUATIONS
+----------------------------- */
+
+function createImplicit(eq, index) {
+
+    const parts = eq.split("=");
+
+    if (parts.length !== 2) {
+
+        throw new Error(
+            "Implicit equation must contain ="
+        );
+
+    }
+
+    const left = parts[0].trim();
+    const right = parts[1].trim();
+
+    const expression =
+        `(${left}) - (${right})`;
+
+    const x = [];
+    const y = [];
+    const z = [];
+
+    const min = -10;
+    const max = 10;
+    const step = 0.1;
+
+    for (let xi = min; xi <= max; xi += step) {
+
+        x.push(xi);
+
+    }
+
+    for (let yi = min; yi <= max; yi += step) {
+
+        y.push(yi);
+
+    }
+
+    for (let yi = 0; yi < y.length; yi++) {
+
+        const row = [];
+
+        for (let xi = 0; xi < x.length; xi++) {
+
+            try {
+
+                const value = math.evaluate(
+                    expression,
+                    {
+                        x: x[xi],
+                        y: y[yi],
+                        pi: Math.PI,
+                        e: Math.E
+                    }
+                );
+
+                row.push(value);
+
+            } catch {
+
+                row.push(NaN);
+
+            }
+
+        }
+
+        z.push(row);
+
+    }
+
+    return {
+
+        x: x,
+
+        y: y,
+
+        z: z,
+
+        type: "contour",
+
+        contours: {
+
+            start: 0,
+
+            end: 0,
+
+            size: 1,
+
+            coloring: "lines"
+
+        },
+
+        line: {
+
+            width: 3,
+
+            color: colors[index % colors.length]
+
+        },
+
+        name: eq,
+
+        showscale: false
+
+    };
+}
+
+/* -----------------------------
+   PARAMETRIC
+----------------------------- */
+
+function createParametric(eq, index) {
+
+    const parts = eq.split(";");
+
+    let xExpression = "";
+    let yExpression = "";
+
+    parts.forEach(part => {
+
+        const p = part.split("=");
+
+        if (p.length !== 2) return;
+
+        const variable = p[0].trim();
+
+        const expression = p[1].trim();
+
+        if (variable === "x") {
+
+            xExpression = expression;
+
+        }
+
+        if (variable === "y") {
+
+            yExpression = expression;
+
+        }
+
+    });
+
+    const x = [];
+    const y = [];
+
+    for (
+        let t = 0;
+        t <= 2 * Math.PI;
+        t += 0.005
+    ) {
+
+        try {
+
+            const xv = math.evaluate(
+                xExpression,
+                {
+                    t: t,
+                    pi: Math.PI,
+                    e: Math.E
+                }
+            );
+
+            const yv = math.evaluate(
+                yExpression,
+                {
+                    t: t,
+                    pi: Math.PI,
+                    e: Math.E
+                }
+            );
+
+            x.push(xv);
+            y.push(yv);
+
+        } catch {
+
+            x.push(null);
+            y.push(null);
+
+        }
+
+    }
+
+    return {
+
+        x: x,
+
+        y: y,
+
+        mode: "lines",
+
+        type: "scatter",
+
+        name: eq,
+
+        line: {
+
+            color: colors[index % colors.length],
+
+            width: 3
+
+        }
+
+    };
+}
+
+/* -----------------------------
+   POLAR
+----------------------------- */
+
+function createPolar(eq, index) {
+
+    let expression =
+        eq.split("=")[1].trim();
+
+    const theta = [];
+    const r = [];
+
+    for (
+        let t = 0;
+        t <= 2 * Math.PI;
+        t += 0.005
+    ) {
+
+        theta.push(t);
+
+        try {
+
+            r.push(
+                math.evaluate(
+                    expression,
+                    {
+                        theta: t,
+                        pi: Math.PI,
+                        e: Math.E
+                    }
+                )
+            );
+
+        } catch {
+
+            r.push(null);
+
+        }
+
+    }
+
+    return {
+
+        type: "scatterpolar",
+
+        r: r,
+
+        theta: theta.map(
+            t => t * 180 / Math.PI
+        ),
+
+        mode: "lines",
+
+        name: eq,
+
+        line: {
+
+            color: colors[index % colors.length],
+
+            width: 3
+
+        }
+
+    };
+}
+
+/* -----------------------------
+   INEQUALITY
+----------------------------- */
+
+function createInequality(eq, index) {
+
+    let operator;
+
+    if (eq.includes(">=")) operator = ">=";
+    else if (eq.includes("<=")) operator = "<=";
+    else if (eq.includes(">")) operator = ">";
+    else if (eq.includes("<")) operator = "<";
+
+    if (!operator) {
+
+        throw new Error(
+            "Invalid inequality."
+        );
+
+    }
+
+    const parts = eq.split(operator);
+
+    const expression = parts[0].trim();
+    const right = parts[1].trim();
+
+    const x = [];
+    const y = [];
+
+    for (let i = -10; i <= 10; i += 0.1) {
+
+        x.push(i);
+
+        let value;
+
+        try {
+
+            value = math.evaluate(
+                right,
+                {
+                    x: i,
+                    pi: Math.PI,
+                    e: Math.E
+                }
+            );
+
+        } catch {
+
+            value = NaN;
+
+        }
+
+        y.push(value);
+
+    }
+
+    return {
+
+        x: x,
+
+        y: y,
+
+        mode: "lines",
+
+        type: "scatter",
+
+        name: eq,
+
+        line: {
+
+            color: colors[index % colors.length],
+
+            width: 3
+
+        },
+
+        fill: "tozeroy",
+
+        fillcolor: "rgba(79,124,255,0.18)"
+
+    };
+}
+
+/* -----------------------------
+   EXAMPLES
+----------------------------- */
+
+function loadExample(eq, type) {
+
+    document.getElementById("equation").value = eq;
+
+    document.getElementById("graphType").value = type;
+
+    equations = [
+        {
+            equation: cleanEquation(eq),
+            type: type
+        }
+    ];
+
+    updateEquationList();
+
+    drawGraphs();
+
+}
+
+/* -----------------------------
+   RESET VIEW
+----------------------------- */
+
+function resetView() {
+
+    if (!equations.length) return;
+
+    drawGraphs();
+
+}
+
+/* -----------------------------
+   ENTER KEY
+----------------------------- */
+
+document
+    .getElementById("equation")
+    .addEventListener("keydown", function(event) {
+
+        if (event.key === "Enter") {
+
+            addEquation();
+
+        }
+
+    });
+
+/* INITIAL GRAPH */
+
+loadExample("y = x^2", "cartesian");
+
+</script>
+
+</body>
+</html>
